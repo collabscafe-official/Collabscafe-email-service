@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>We Miss You</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #079f82 0%, #7c6edd 100%); padding: 40px 32px; text-align: center; }
+    .header h1 { margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; }
+    .header p { margin: 8px 0 0; color: rgba(255,255,255,0.85); font-size: 14px; }
+    .body { padding: 36px 32px; }
+    .body p { margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.6; }
+    .highlight { background: #f0fdf9; border-radius: 8px; padding: 16px 20px; margin: 0 0 20px; }
+    .highlight p { margin: 0; color: #065f46; font-size: 14px; }
+    .cta { display: block; width: fit-content; margin: 28px auto 0; background: linear-gradient(135deg, #079f82, #7c6edd); color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-size: 15px; font-weight: 600; text-align: center; }
+    .footer { padding: 24px 32px; text-align: center; background: #f9fafb; border-top: 1px solid #f0f0f0; }
+    .footer p { margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.6; }
+    .footer a { color: #079f82; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>We Miss You, {{first_name}}!</h1>
+      <p>Brands are looking for creators like you</p>
+    </div>
+    <div class="body">
+      <p>Hi {{first_name}},</p>
+      <p>
+        It's been a while since we've seen you on Collabscafe. A lot has happened
+        since your last visit — new brands, new campaigns, and new collaboration
+        opportunities are waiting for you.
+      </p>
+      <div class="highlight">
+        <p>
+          Your profile is still live and brands can discover you.
+          Log back in to check your messages and update your availability.
+        </p>
+      </div>
+      <p>
+        Don't let your hard work go unnoticed. Come back and see what's new.
+      </p>
+      <a href="{{profile_url}}" class="cta">Go to My Profile</a>
+    </div>
+    <div class="footer">
+      <p>
+        You're receiving this because you have an account on
+        <a href="https://collabscafe.com">Collabscafe</a>.<br />
+        <a href="https://collabscafe.com/unsubscribe?email={{email}}">Unsubscribe</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Complete Your Profile</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #079f82 0%, #7c6edd 100%); padding: 40px 32px; text-align: center; }
+    .header img { width: 140px; margin-bottom: 16px; }
+    .header h1 { margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; }
+    .body { padding: 36px 32px; }
+    .body p { margin: 0 0 16px; color: #374151; font-size: 15px; line-height: 1.6; }
+    .cta { display: block; width: fit-content; margin: 28px auto 0; background: linear-gradient(135deg, #079f82, #7c6edd); color: #ffffff; text-decoration: none; padding: 14px 36px; border-radius: 8px; font-size: 15px; font-weight: 600; text-align: center; }
+    .footer { padding: 24px 32px; text-align: center; background: #f9fafb; border-top: 1px solid #f0f0f0; }
+    .footer p { margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.6; }
+    .footer a { color: #079f82; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>Complete Your Profile</h1>
+    </div>
+    <div class="body">
+      <p>Hi {{first_name}},</p>
+      <p>
+        Your Collabscafe profile is almost there! Brands browsing our platform are
+        more likely to reach out to creators with complete profiles — so don't miss out.
+      </p>
+      <p>
+        Adding your bio, social handles, portfolio, and pricing only takes a few minutes
+        and dramatically increases your chances of getting discovered.
+      </p>
+      <a href="{{profile_url}}" class="cta">Complete My Profile</a>
+    </div>
+    <div class="footer">
+      <p>
+        You're receiving this because you have an account on
+        <a href="https://collabscafe.com">Collabscafe</a>.<br />
+        <a href="https://collabscafe.com/unsubscribe?email={{email}}">Unsubscribe</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>

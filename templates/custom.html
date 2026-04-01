@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Message from Collabscafe</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .wrapper { max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    .header { background: linear-gradient(135deg, #079f82 0%, #7c6edd 100%); padding: 40px 32px; text-align: center; }
+    .header h1 { margin: 0; color: #ffffff; font-size: 22px; font-weight: 700; }
+    .body { padding: 36px 32px; color: #374151; font-size: 15px; line-height: 1.6; }
+    .footer { padding: 24px 32px; text-align: center; background: #f9fafb; border-top: 1px solid #f0f0f0; }
+    .footer p { margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.6; }
+    .footer a { color: #079f82; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="header">
+      <h1>Message from Collabscafe</h1>
+    </div>
+    <div class="body">
+      <!-- Custom body is injected here via campaign.customBody -->
+      {{custom_body}}
+    </div>
+    <div class="footer">
+      <p>
+        You're receiving this because you have an account on
+        <a href="https://collabscafe.com">Collabscafe</a>.<br />
+        <a href="https://collabscafe.com/unsubscribe?email={{email}}">Unsubscribe</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>
