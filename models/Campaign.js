@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const TEMPLATE_TYPES = ["incomplete-profile", "unverified-email", "inactivity", "custom"];
-const STATUSES = ["draft", "running", "completed", "failed"];
+const STATUSES = ["draft", "running", "paused", "completed", "failed", "cancelled"];
 
 const campaignSchema = new mongoose.Schema(
   {
@@ -52,11 +52,16 @@ const campaignSchema = new mongoose.Schema(
       enum: STATUSES,
       default: "draft",
     },
+    // Rate control
+    ratePerHour: { type: Number, default: 100 },   // max emails per hour
+
     totalTargeted: { type: Number, default: 0 },
     sentCount: { type: Number, default: 0 },
     failedCount: { type: Number, default: 0 },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    pausedAt: { type: Date, default: null },
+    stoppedAt: { type: Date, default: null },
   },
   {
     timestamps: true,

@@ -5,7 +5,7 @@ const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 
 const { connectDB } = require("./db");
-const { startQueue } = require("./services/queue.service");
+const { restoreRunningCampaigns } = require("./services/queue.service");
 const campaignRoutes = require("./routes/campaign.routes");
 const statusRoutes = require("./routes/status.routes");
 
@@ -48,7 +48,7 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await connectDB();
-    startQueue();
+    restoreRunningCampaigns();
 
     app.listen(PORT, () => {
       console.log(`[Server] collabscafe-email-service running on port ${PORT}`);

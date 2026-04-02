@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const STATUSES = ["pending", "sent", "failed", "bounced"];
+const STATUSES = ["pending", "sent", "failed", "bounced", "cancelled"];
 
 const emailLogSchema = new mongoose.Schema(
   {

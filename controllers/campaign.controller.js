@@ -1,7 +1,7 @@
 const Campaign = require("../models/Campaign");
 const EmailLog = require("../models/EmailLog");
 const Influencer = require("../models/Influencer");
-const { enqueueCampaign } = require("../services/queue.service");
+const { startCampaign, pauseCampaign, resumeCampaign, stopCampaign } = require("../services/queue.service");
 
 // GET /campaigns
 async function listCampaigns(req, res) {
@@ -27,7 +27,7 @@ async function getCampaign(req, res) {
 
 // POST /campaigns
 async function createCampaign(req, res) {
-  const { name, description, templateType, subject, customBody, targetFilters, excluded_ids } = req.body;
+  const { name, description, templateType, subject, customBody, targetFilters, excluded_ids, rate_per_hour } = req.body;
 
   if (!name || !templateType || !subject) {
     return res.status(400).json({ error: "name, templateType, and subject are required" });
@@ -44,6 +44,7 @@ async function createCampaign(req, res) {
     customBody,
     targetFilters: targetFilters || {},
     excludedIds: Array.isArray(excluded_ids) ? excluded_ids : [],
+    ratePerHour: rate_per_hour && rate_per_hour > 0 ? Math.floor(rate_per_hour) : 100,
   });
 
   res.status(201).json(campaign);
@@ -54,8 +55,8 @@ async function updateCampaign(req, res) {
   const campaign = await Campaign.findById(req.params.id);
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
 
-  if (campaign.status === "running") {
-    return res.status(409).json({ error: "Cannot edit a running campaign" });
+  if (["running", "paused"].includes(campaign.status)) {
+    return res.status(409).json({ error: "Cannot edit a running or paused campaign" });
   }
 
   const allowed = ["name", "description", "templateType", "subject", "customBody", "targetFilters"];
@@ -104,8 +105,8 @@ async function sendCampaign(req, res) {
   // Clear any existing logs for this campaign
   await EmailLog.deleteMany({ campaignId: campaign._id });
 
-  const count = await enqueueCampaign(campaign);
-  res.json({ message: "Campaign queued", totalTargeted: count });
+  const count = await startCampaign(campaign);
+  res.json({ message: "Campaign started", totalTargeted: count });
 }
 
 // GET /campaigns/:id/logs
@@ -241,6 +242,39 @@ async function previewAll(req, res) {
     page: parsedPage,
     totalPages: Math.ceil(total / parsedLimit),
   });
+}
+
+// POST /campaigns/:id/pause
+async function pauseCampaignController(req, res) {
+  const campaign = await Campaign.findById(req.params.id);
+  if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+  if (campaign.status !== "running") {
+    return res.status(409).json({ error: "Campaign is not running" });
+  }
+  await pauseCampaign(campaign._id);
+  res.json({ message: "Campaign paused" });
+}
+
+// POST /campaigns/:id/resume
+async function resumeCampaignController(req, res) {
+  const campaign = await Campaign.findById(req.params.id);
+  if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+  if (campaign.status !== "paused") {
+    return res.status(409).json({ error: "Campaign is not paused" });
+  }
+  await resumeCampaign(campaign._id);
+  res.json({ message: "Campaign resumed" });
+}
+
+// POST /campaigns/:id/stop
+async function stopCampaignController(req, res) {
+  const campaign = await Campaign.findById(req.params.id);
+  if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+  if (!["running", "paused"].includes(campaign.status)) {
+    return res.status(409).json({ error: "Campaign is not running or paused" });
+  }
+  await stopCampaign(campaign._id);
+  res.json({ message: "Campaign stopped" });
 }
 
 // GET /campaigns/templates/:type
@@ -453,6 +487,9 @@ module.exports = {
   updateCampaign,
   deleteCampaign,
   sendCampaign,
+  pauseCampaignController,
+  resumeCampaignController,
+  stopCampaignController,
   getCampaignLogs,
   previewCampaign,
   previewAll,

@@ -6,6 +6,9 @@ const {
   updateCampaign,
   deleteCampaign,
   sendCampaign,
+  pauseCampaignController,
+  resumeCampaignController,
+  stopCampaignController,
   getCampaignLogs,
   previewCampaign,
   previewAll,
@@ -24,7 +27,10 @@ router.get("/:id",                 wrap(getCampaign));
 router.post("/",          wrap(createCampaign));
 router.patch("/:id",      wrap(updateCampaign));
 router.delete("/:id",     wrap(deleteCampaign));
-router.post("/:id/send",  wrap(sendCampaign));
-router.get("/:id/logs",   wrap(getCampaignLogs));
+router.post("/:id/send",   wrap(sendCampaign));
+router.post("/:id/pause",  wrap(pauseCampaignController));
+router.post("/:id/resume", wrap(resumeCampaignController));
+router.post("/:id/stop",   wrap(stopCampaignController));
+router.get("/:id/logs",    wrap(getCampaignLogs));
 
 module.exports = router;
