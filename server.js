@@ -6,7 +6,9 @@ const rateLimit = require("express-rate-limit");
 
 const { connectDB } = require("./db");
 const { restoreRunningCampaigns } = require("./services/queue.service");
+const { restoreRunningCsvCampaigns } = require("./services/csv-queue.service");
 const campaignRoutes = require("./routes/campaign.routes");
+const csvCampaignRoutes = require("./routes/csv-campaign.routes");
 const statusRoutes = require("./routes/status.routes");
 
 const app = express();
@@ -29,6 +31,7 @@ app.use(limiter);
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 app.use("/campaigns", campaignRoutes);
+app.use("/csv-campaigns", csvCampaignRoutes);
 app.use("/", statusRoutes);
 
 // 404
@@ -49,6 +52,7 @@ async function start() {
   try {
     await connectDB();
     restoreRunningCampaigns();
+    restoreRunningCsvCampaigns();
 
     app.listen(PORT, () => {
       console.log(`[Server] collabscafe-email-service running on port ${PORT}`);
