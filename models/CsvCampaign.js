@@ -6,6 +6,7 @@ const recipientSchema = new mongoose.Schema(
   {
     name: { type: String, default: "" },
     email: { type: String, required: true },
+    customFields: { type: Map, of: String, default: {} },
     status: {
       type: String,
       enum: ["pending", "sent", "failed", "cancelled"],

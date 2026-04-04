@@ -24,6 +24,10 @@ const upload = multer({
 
 // ── File parser ───────────────────────────────────────────────────────────────
 
+// Keys treated as name / email — everything else goes into customFields
+const NAME_KEYS  = new Set(["name", "full name", "fullname", "first name", "firstname"]);
+const EMAIL_KEYS = new Set(["email", "email address", "e-mail", "emailaddress"]);
+
 function parseFileBuffer(buffer) {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -31,6 +35,7 @@ function parseFileBuffer(buffer) {
 
   const recipients = [];
   const errors = [];
+  const extraColumns = new Set(); // all non-name/email column keys found
 
   rows.forEach((row, idx) => {
     // Normalize keys: lowercase, strip whitespace
@@ -59,10 +64,20 @@ function parseFileBuffer(buffer) {
       return;
     }
 
-    recipients.push({ name, email });
+    // Collect all extra columns as customFields
+    const customFields = {};
+    for (const [key, value] of Object.entries(norm)) {
+      if (!NAME_KEYS.has(key) && !EMAIL_KEYS.has(key) && value) {
+        // Use original casing from header row as the template variable key
+        customFields[key] = value;
+        extraColumns.add(key);
+      }
+    }
+
+    recipients.push({ name, email, customFields });
   });
 
-  return { recipients, errors };
+  return { recipients, errors, columns: Array.from(extraColumns) };
 }
 
 // ── Controllers ───────────────────────────────────────────────────────────────
@@ -70,8 +85,8 @@ function parseFileBuffer(buffer) {
 // POST /csv-campaigns/parse  (multipart)
 async function parseFile(req, res) {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  const { recipients, errors } = parseFileBuffer(req.file.buffer);
-  res.json({ recipients, count: recipients.length, errors });
+  const { recipients, errors, columns } = parseFileBuffer(req.file.buffer);
+  res.json({ recipients, count: recipients.length, errors, columns });
 }
 
 // GET /csv-campaigns
@@ -152,6 +167,7 @@ async function createCsvCampaign(req, res) {
     recipients: valid.map((r) => ({
       name: r.name || "",
       email: r.email,
+      customFields: r.customFields || {},
       status: "pending",
     })),
   });

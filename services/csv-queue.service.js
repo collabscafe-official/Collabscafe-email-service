@@ -134,6 +134,13 @@ async function processOne(campaign, recipient) {
     html = html.replace(/{{\s*first_name\s*}}/gi, firstName);
     html = html.replace(/{{\s*name\s*}}/gi, recipient.name || "Creator");
     html = html.replace(/{{\s*email\s*}}/gi, recipient.email);
+    // Replace any extra column variables from customFields
+    const fields = recipient.customFields instanceof Map
+      ? Object.fromEntries(recipient.customFields)
+      : (recipient.customFields || {});
+    for (const [key, value] of Object.entries(fields)) {
+      html = html.replace(new RegExp(`{{\\s*${key}\\s*}}`, "gi"), value || "");
+    }
     html = html.replace(/{{\s*\w+\s*}}/g, "");
 
     const messageId = await sendEmail({
