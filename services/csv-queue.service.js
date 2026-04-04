@@ -130,22 +130,28 @@ async function processOne(campaign, recipient) {
     }
 
     const firstName = (recipient.name || "Creator").split(" ")[0];
-    let html = campaign.htmlContent || "";
-    html = html.replace(/{{\s*first_name\s*}}/gi, firstName);
-    html = html.replace(/{{\s*name\s*}}/gi, recipient.name || "Creator");
-    html = html.replace(/{{\s*email\s*}}/gi, recipient.email);
-    // Replace any extra column variables from customFields
     const fields = recipient.customFields instanceof Map
       ? Object.fromEntries(recipient.customFields)
       : (recipient.customFields || {});
-    for (const [key, value] of Object.entries(fields)) {
-      html = html.replace(new RegExp(`{{\\s*${key}\\s*}}`, "gi"), value || "");
-    }
-    html = html.replace(/{{\s*\w+\s*}}/g, "");
+
+    const applyVars = (str) => {
+      let out = str;
+      out = out.replace(/{{\s*first_name\s*}}/gi, firstName);
+      out = out.replace(/{{\s*name\s*}}/gi, recipient.name || "Creator");
+      out = out.replace(/{{\s*email\s*}}/gi, recipient.email);
+      for (const [key, value] of Object.entries(fields)) {
+        out = out.replace(new RegExp(`{{\\s*${key}\\s*}}`, "gi"), value || "");
+      }
+      out = out.replace(/{{\s*\w+\s*}}/g, "");
+      return out;
+    };
+
+    const subject = applyVars(campaign.subject);
+    const html    = applyVars(campaign.htmlContent || "");
 
     const messageId = await sendEmail({
       to: recipient.email,
-      subject: campaign.subject,
+      subject,
       htmlBody: html,
     });
 
