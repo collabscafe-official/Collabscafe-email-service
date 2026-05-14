@@ -2,8 +2,9 @@ const Campaign = require("../models/Campaign");
 const EmailLog = require("../models/EmailLog");
 const Influencer = require("../models/Influencer");
 const Brand = require("../models/Brand");
+const BrandTeamMember = require("../models/BrandTeamMember");
 const { sendEmail } = require("./ses.service");
-const { renderForCampaign } = require("./template.service");
+const { renderForCampaign, renderSubjectForCampaign } = require("./template.service");
 
 // campaignId (string) → setTimeout handle
 const activeTimers = new Map();
@@ -187,10 +188,31 @@ async function processOne(log, campaign) {
       return;
     }
 
-    const htmlBody = renderForCampaign(campaign, recipient, audience);
+    // For brand audience, resolve the contact person from brand_team_members.
+    // Prefer the admin team member; fall back to most-recent active member;
+    // fall back to null (template.service handles the brand_name fallback).
+    let brandContact = null;
+    if (audience === "brand") {
+      brandContact = await BrandTeamMember.findOne({
+        brand: log.brandId,
+        is_admin: true,
+        is_active: true,
+        is_deleted: { $ne: true },
+      }).lean();
+      if (!brandContact) {
+        brandContact = await BrandTeamMember.findOne({
+          brand: log.brandId,
+          is_active: true,
+          is_deleted: { $ne: true },
+        }).sort({ created_at: -1, createdAt: -1, _id: -1 }).lean();
+      }
+    }
+
+    const htmlBody = renderForCampaign(campaign, recipient, audience, brandContact);
+    const subject  = renderSubjectForCampaign(campaign, recipient, audience, brandContact);
     const messageId = await sendEmail({
       to: recipient.email,
-      subject: campaign.subject,
+      subject,
       htmlBody,
     });
 
