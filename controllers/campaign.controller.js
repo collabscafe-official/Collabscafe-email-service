@@ -1,7 +1,10 @@
 const Campaign = require("../models/Campaign");
 const EmailLog = require("../models/EmailLog");
 const Influencer = require("../models/Influencer");
+const Brand = require("../models/Brand");
 const { startCampaign, pauseCampaign, resumeCampaign, stopCampaign } = require("../services/queue.service");
+
+const AUDIENCES = ["creator", "brand"];
 
 // GET /campaigns
 async function listCampaigns(req, res) {
@@ -27,7 +30,7 @@ async function getCampaign(req, res) {
 
 // POST /campaigns
 async function createCampaign(req, res) {
-  const { name, description, templateType, subject, customBody, targetFilters, excluded_ids, rate_per_hour } = req.body;
+  const { name, description, audience, templateType, subject, customBody, targetFilters, excluded_ids, rate_per_hour } = req.body;
 
   if (!name || !templateType || !subject) {
     return res.status(400).json({ error: "name, templateType, and subject are required" });
@@ -35,10 +38,17 @@ async function createCampaign(req, res) {
   if (templateType === "custom" && !customBody) {
     return res.status(400).json({ error: "customBody is required for custom template type" });
   }
+  // Audience defaults to 'creator' for back-compat. Brand campaigns only
+  // support templateType='custom' for v1 (no pre-built brand templates yet).
+  const finalAudience = AUDIENCES.includes(audience) ? audience : "creator";
+  if (finalAudience === "brand" && templateType !== "custom") {
+    return res.status(400).json({ error: "Brand campaigns require templateType='custom'" });
+  }
 
   const campaign = await Campaign.create({
     name,
     description,
+    audience: finalAudience,
     templateType,
     subject,
     customBody,
@@ -59,6 +69,9 @@ async function updateCampaign(req, res) {
     return res.status(409).json({ error: "Cannot edit a running or paused campaign" });
   }
 
+  // `audience` is intentionally NOT in the allowed list — switching audience
+  // mid-life is unsafe (targetFilters shape differs, excludedIds reference
+  // a different collection). Create a new campaign instead.
   const allowed = ["name", "description", "templateType", "subject", "customBody", "targetFilters"];
   for (const key of allowed) {
     if (req.body[key] !== undefined) campaign[key] = req.body[key];
@@ -124,9 +137,43 @@ async function getCampaignLogs(req, res) {
   res.json({ logs, total, page: parseInt(page), limit: parseInt(limit) });
 }
 
+// ── Brand audience query builder ────────────────────────────────────────────
+// Mirrors the buildAudience function in queue.service.js so preview counts
+// match actual send counts. Brand campaigns always go to brand.email (the
+// main account address). is_deleted brands are excluded.
+function buildBrandQuery(filters = {}) {
+  const query = {
+    is_active: true,
+    is_deleted: { $ne: true },
+    email: { $exists: true, $ne: null, $ne: '' },
+  };
+  if (Array.isArray(filters.categories) && filters.categories.length > 0) {
+    query.category = { $in: filters.categories };
+  }
+  if (Array.isArray(filters.campaignGoals) && filters.campaignGoals.length > 0) {
+    query.campaign_goal = { $in: filters.campaignGoals };
+  }
+  if (filters.country) {
+    query.country = new RegExp(`^${filters.country}$`, 'i');
+  }
+  if (filters.city) {
+    query.city = new RegExp(`^${filters.city}$`, 'i');
+  }
+  if (filters.emailVerified !== null && filters.emailVerified !== undefined) {
+    query.is_email_verified = filters.emailVerified;
+  }
+  if (filters.profileCompleted !== null && filters.profileCompleted !== undefined) {
+    query.is_profile_completed = filters.profileCompleted;
+  }
+  return query;
+}
+
 // POST /campaigns/preview
+// Body: { audience?, type, filters? }
+//   audience: 'creator' (default) | 'brand'
+//   type: campaign template type (creator) or 'custom_all' / 'custom_segment' (brand)
 async function previewCampaign(req, res) {
-  const { type, filters } = req.body;
+  const { audience = 'creator', type, filters } = req.body;
 
   if (!type) {
     return res.status(400).json({
@@ -135,7 +182,25 @@ async function previewCampaign(req, res) {
     });
   }
 
-  // Build query based on type
+  // ── Brand audience branch ──
+  if (audience === 'brand') {
+    const query = buildBrandQuery(filters || {});
+    const total = await Brand.countDocuments(query);
+    const sample = await Brand.find(query)
+      .select('brand_name email')
+      .limit(5)
+      .lean();
+    return res.json({
+      success: true,
+      count: total,
+      sample: sample.map(b => ({
+        name: b.brand_name || 'Brand',
+        email: b.email,
+      })),
+    });
+  }
+
+  // ── Creator audience branch (existing behavior) ──
   let query = { is_active: true };
 
   if (type === 'incomplete_profile') {
@@ -184,15 +249,54 @@ async function previewCampaign(req, res) {
   });
 }
 
-// GET /campaigns/preview/all?type=&page=&limit=&[filters]
+// GET /campaigns/preview/all?audience=&type=&page=&limit=&[filters]
 async function previewAll(req, res) {
-  const { type, page = 1, limit = 50 } = req.query;
+  const { audience = 'creator', type, page = 1, limit = 50 } = req.query;
 
   if (!type) {
     return res.status(400).json({ success: false, message: 'type is required' });
   }
 
-  // Build same query as previewCampaign
+  const parsedPage  = Math.max(1, parseInt(page));
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit)));
+  const skip = (parsedPage - 1) * parsedLimit;
+
+  // ── Brand audience branch ──
+  if (audience === 'brand') {
+    // Brand filter values come in via query string for GET parity with creator path.
+    const filters = {
+      categories:     req.query.categories ? req.query.categories.split(',').filter(Boolean) : [],
+      campaignGoals:  req.query.campaign_goals ? req.query.campaign_goals.split(',').filter(Boolean) : [],
+      country:        req.query.country,
+      city:           req.query.city,
+    };
+    if (req.query.is_email_verified !== undefined) {
+      filters.emailVerified = req.query.is_email_verified === 'true';
+    }
+    if (req.query.is_profile_completed !== undefined) {
+      filters.profileCompleted = req.query.is_profile_completed === 'true';
+    }
+    const query = buildBrandQuery(filters);
+    const [brands, total] = await Promise.all([
+      Brand.find(query).select('_id brand_name email').skip(skip).limit(parsedLimit).lean(),
+      Brand.countDocuments(query),
+    ]);
+    return res.json({
+      success: true,
+      // Reuse the existing `creators` field name so the FE recipient picker
+      // doesn't need to branch on shape — it just renders { _id, name, email }.
+      creators: brands.map(b => ({
+        _id: String(b._id),
+        name: b.brand_name || 'Brand',
+        email: b.email,
+      })),
+      total,
+      page: parsedPage,
+      totalPages: Math.ceil(total / parsedLimit),
+    });
+  }
+
+  // ── Creator audience branch (existing behavior) ──
   let query = { is_active: true };
 
   if (type === 'incomplete_profile') {
@@ -217,10 +321,6 @@ async function previewAll(req, res) {
   // custom_all: no additional filters
 
   query.email = { $exists: true, $ne: null, $ne: '' };
-
-  const parsedPage  = Math.max(1, parseInt(page));
-  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit)));
-  const skip = (parsedPage - 1) * parsedLimit;
 
   const [creators, total] = await Promise.all([
     Influencer.find(query)

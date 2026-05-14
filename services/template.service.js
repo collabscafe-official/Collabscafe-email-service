@@ -35,15 +35,21 @@ function renderTemplate(templateName, variables = {}) {
 }
 
 /**
- * Render template by campaign.
+ * Render template by campaign + recipient.
  * If campaign has customBody (edited HTML), always use it for ALL types.
  * Falls back to loading the .html file only if customBody is absent.
+ *
+ * @param campaign  Campaign document (must have `audience` to drive variable shape)
+ * @param recipient Influencer doc (creator audience) OR Brand doc (brand audience)
+ * @param audience  Explicit audience override; falls back to campaign.audience
  */
-function renderForCampaign(campaign, influencer) {
-  const vars = buildVariables(influencer);
+function renderForCampaign(campaign, recipient, audience) {
+  const effectiveAudience = audience || campaign.audience || "creator";
+  const vars = buildVariables(recipient, effectiveAudience);
 
-  // If campaign has custom HTML saved, always use it
-  // This covers both custom campaigns AND edited templates
+  // If campaign has custom HTML saved, always use it (covers both custom
+  // campaigns AND edited templates AND brand campaigns since v1 brand
+  // campaigns only support templateType='custom' anyway).
   if (campaign.customBody && campaign.customBody.trim()) {
     let html = campaign.customBody;
     for (const [key, value] of Object.entries(vars)) {
@@ -54,15 +60,35 @@ function renderForCampaign(campaign, influencer) {
     return html;
   }
 
-  // Fallback: load from file (safety net only)
+  // Fallback: load creator template from file. Brand audience has no pre-built
+  // templates in v1; if we reach here on a brand campaign something is wrong
+  // (createCampaign enforces customBody for brand), so just return a minimal
+  // safe message rather than throwing in the queue.
+  if (effectiveAudience === "brand") {
+    return `<p>Hello ${vars.brand_name || "there"},</p>`;
+  }
   return renderTemplate(campaign.templateType, vars);
 }
 
-function buildVariables(influencer) {
+function buildVariables(recipient, audience) {
+  if (audience === "brand") {
+    return {
+      brand_name: recipient?.brand_name || "there",
+      email: recipient?.email || "",
+      // Also expose a couple of generic aliases so an admin writing a brand
+      // template doesn't have to memorize a separate variable name.
+      name: recipient?.brand_name || "there",
+      first_name: recipient?.brand_name || "there",
+      profile_url: "https://collabscafe.com",
+      custom_body: "",
+    };
+  }
+  // Default: creator audience.
   return {
-    first_name: influencer.name || "Creator",
-    CREATOR_NAME: influencer.name || "Creator",
-    email: influencer.email || "",
+    first_name: recipient?.name || "Creator",
+    CREATOR_NAME: recipient?.name || "Creator",
+    name: recipient?.name || "Creator",
+    email: recipient?.email || "",
     profile_url: "https://creator.collabscafe.com",
     custom_body: "",
   };

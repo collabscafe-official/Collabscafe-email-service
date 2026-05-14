@@ -1,6 +1,7 @@
 const Campaign = require("../models/Campaign");
 const EmailLog = require("../models/EmailLog");
 const Influencer = require("../models/Influencer");
+const Brand = require("../models/Brand");
 const { sendEmail } = require("./ses.service");
 const { renderForCampaign } = require("./template.service");
 
@@ -155,20 +156,40 @@ async function processNextEmail(campaignId, delayMs) {
 
 async function processOne(log, campaign) {
   try {
-    const influencer = await Influencer.findById(log.influencerId).lean();
+    // Pick the right recipient collection based on campaign audience.
+    // log.audience is the source of truth (defaults to 'creator' on legacy logs);
+    // fall back to campaign.audience for safety.
+    const audience = log.audience || campaign.audience || "creator";
+    let recipient = null;
+    if (audience === "brand") {
+      if (!log.brandId) {
+        await failLog(log, "Brand campaign log missing brandId");
+        return;
+      }
+      recipient = await Brand.findById(log.brandId).lean();
+    } else {
+      if (!log.influencerId) {
+        await failLog(log, "Creator campaign log missing influencerId");
+        return;
+      }
+      recipient = await Influencer.findById(log.influencerId).lean();
+    }
 
-    if (!influencer || !influencer.email) {
-      await EmailLog.findByIdAndUpdate(log._id, {
-        status: "failed",
-        errorMessage: "Influencer missing or has no email",
-      });
-      await Campaign.findByIdAndUpdate(log.campaignId, { $inc: { failedCount: 1 } });
+    if (!recipient || !recipient.email) {
+      await failLog(log, "Recipient missing or has no email");
       return;
     }
 
-    const htmlBody = renderForCampaign(campaign, influencer);
+    // Skip soft-deleted brands too (creators don't have an is_deleted flag in
+    // the read model). Defensive — also filtered at enqueue time.
+    if (audience === "brand" && recipient.is_deleted) {
+      await failLog(log, "Brand is_deleted=true at send time");
+      return;
+    }
+
+    const htmlBody = renderForCampaign(campaign, recipient, audience);
     const messageId = await sendEmail({
-      to: influencer.email,
+      to: recipient.email,
       subject: campaign.subject,
       htmlBody,
     });
@@ -180,29 +201,39 @@ async function processOne(log, campaign) {
     });
 
     await Campaign.findByIdAndUpdate(log.campaignId, { $inc: { sentCount: 1 } });
-    console.log(`[Queue] Sent to ${influencer.email} (campaign ${log.campaignId})`);
+    console.log(`[Queue] Sent to ${recipient.email} (campaign ${log.campaignId}, audience=${audience})`);
   } catch (err) {
-    await EmailLog.findByIdAndUpdate(log._id, {
-      status: "failed",
-      errorMessage: err.message,
-    });
-    await Campaign.findByIdAndUpdate(log.campaignId, { $inc: { failedCount: 1 } });
+    await failLog(log, err.message);
     console.error(`[Queue] Email failed for log ${log._id}:`, err.message);
   }
+}
+
+async function failLog(log, errorMessage) {
+  await EmailLog.findByIdAndUpdate(log._id, {
+    status: "failed",
+    errorMessage,
+  });
+  await Campaign.findByIdAndUpdate(log.campaignId, { $inc: { failedCount: 1 } });
 }
 
 // ── Audience builder ──────────────────────────────────────────────────────────
 // Mirrors previewCampaign query logic exactly so preview count = actual send count.
 
 async function enqueueCampaign(campaign) {
-  let influencers = await buildAudience(campaign.templateType, campaign.targetFilters);
+  const audience = campaign.audience || "creator";
+  let recipients;
+  if (audience === "brand") {
+    recipients = await buildBrandAudience(campaign.targetFilters?.brand || {});
+  } else {
+    recipients = await buildCreatorAudience(campaign.templateType, campaign.targetFilters || {});
+  }
 
   if (campaign.excludedIds && campaign.excludedIds.length > 0) {
     const excludedSet = new Set(campaign.excludedIds.map((id) => String(id)));
-    influencers = influencers.filter((inf) => !excludedSet.has(String(inf._id)));
+    recipients = recipients.filter((r) => !excludedSet.has(String(r._id)));
   }
 
-  if (influencers.length === 0) {
+  if (recipients.length === 0) {
     await Campaign.findByIdAndUpdate(campaign._id, {
       status: "completed",
       totalTargeted: 0,
@@ -211,35 +242,50 @@ async function enqueueCampaign(campaign) {
     return 0;
   }
 
-  // Bulk-insert pending logs (skip duplicates via upsert)
-  const ops = influencers.map((inf) => ({
-    updateOne: {
-      filter: { campaignId: campaign._id, influencerId: inf._id },
-      update: {
-        $setOnInsert: {
-          campaignId: campaign._id,
-          influencerId: inf._id,
-          email: inf.email,
-          status: "pending",
+  // Bulk-insert pending logs (skip duplicates via upsert).
+  // Brand vs creator: populate the right ID field; partial unique indexes on
+  // EmailLog ({campaignId, influencerId} for creators, {campaignId, brandId}
+  // for brands) prevent duplicates per audience.
+  const ops = recipients.map((r) => {
+    const setOnInsert = {
+      campaignId: campaign._id,
+      email: r.email,
+      status: "pending",
+      audience,
+    };
+    if (audience === "brand") {
+      setOnInsert.brandId = r._id;
+      return {
+        updateOne: {
+          filter: { campaignId: campaign._id, brandId: r._id },
+          update: { $setOnInsert: setOnInsert },
+          upsert: true,
         },
+      };
+    }
+    setOnInsert.influencerId = r._id;
+    return {
+      updateOne: {
+        filter: { campaignId: campaign._id, influencerId: r._id },
+        update: { $setOnInsert: setOnInsert },
+        upsert: true,
       },
-      upsert: true,
-    },
-  }));
+    };
+  });
 
   await EmailLog.bulkWrite(ops, { ordered: false });
 
   await Campaign.findByIdAndUpdate(campaign._id, {
     status: "running",
-    totalTargeted: influencers.length,
+    totalTargeted: recipients.length,
     startedAt: new Date(),
   });
 
-  console.log(`[Queue] Campaign ${campaign._id} enqueued ${influencers.length} recipients`);
-  return influencers.length;
+  console.log(`[Queue] Campaign ${campaign._id} enqueued ${recipients.length} ${audience}(s)`);
+  return recipients.length;
 }
 
-async function buildAudience(templateType, filters = {}) {
+async function buildCreatorAudience(templateType, filters = {}) {
   const query = {
     is_active: true,
     email: { $exists: true, $ne: null, $ne: "" },
@@ -285,6 +331,33 @@ async function buildAudience(templateType, filters = {}) {
   }
 
   return Influencer.find(query).select("_id name username email city country").lean();
+}
+
+async function buildBrandAudience(filters = {}) {
+  const query = {
+    is_active: true,
+    is_deleted: { $ne: true },
+    email: { $exists: true, $ne: null, $ne: "" },
+  };
+  if (Array.isArray(filters.categories) && filters.categories.length > 0) {
+    query.category = { $in: filters.categories };
+  }
+  if (Array.isArray(filters.campaignGoals) && filters.campaignGoals.length > 0) {
+    query.campaign_goal = { $in: filters.campaignGoals };
+  }
+  if (filters.country) {
+    query.country = new RegExp(`^${filters.country}$`, "i");
+  }
+  if (filters.city) {
+    query.city = new RegExp(`^${filters.city}$`, "i");
+  }
+  if (filters.emailVerified !== null && filters.emailVerified !== undefined) {
+    query.is_email_verified = filters.emailVerified;
+  }
+  if (filters.profileCompleted !== null && filters.profileCompleted !== undefined) {
+    query.is_profile_completed = filters.profileCompleted;
+  }
+  return Brand.find(query).select("_id brand_name email category campaign_goal country city").lean();
 }
 
 module.exports = { startCampaign, pauseCampaign, resumeCampaign, stopCampaign, restoreRunningCampaigns };
