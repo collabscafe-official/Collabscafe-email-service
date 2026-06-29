@@ -32,6 +32,10 @@ async function sendEmail({ to, subject, htmlBody, textBody }) {
   const command = new SendEmailCommand({
     Source: fromAddress,
     Destination: { ToAddresses: [to] },
+    // Reply-To = the From mailbox — Gmail downranks senders whose Reply-To
+    // is missing or points to noreply@. Setting it explicitly is one of the
+    // small signals that helps land in Primary.
+    ReplyToAddresses: [process.env.SES_FROM_EMAIL],
     Message: {
       Subject: { Data: subject, Charset: "UTF-8" },
       Body: {
