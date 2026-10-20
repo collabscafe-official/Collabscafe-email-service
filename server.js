@@ -10,6 +10,7 @@ const { restoreRunningCsvCampaigns } = require("./services/csv-queue.service");
 const campaignRoutes = require("./routes/campaign.routes");
 const csvCampaignRoutes = require("./routes/csv-campaign.routes");
 const statusRoutes = require("./routes/status.routes");
+const { requireAdmin } = require("./middleware/adminAuth");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -30,8 +31,10 @@ app.use(limiter);
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-app.use("/campaigns", campaignRoutes);
-app.use("/csv-campaigns", csvCampaignRoutes);
+// Every route except /health needs an admin (see middleware/adminAuth.js).
+app.use("/campaigns", requireAdmin, campaignRoutes);
+app.use("/csv-campaigns", requireAdmin, csvCampaignRoutes);
+app.use("/status", requireAdmin);
 app.use("/", statusRoutes);
 
 // 404
